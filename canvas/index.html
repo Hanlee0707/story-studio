@@ -170,7 +170,7 @@ $('shelf').onclick = e => { const b = e.target.closest('.ep'); if (!b) return; c
 const au = $('au'); const cache = {};
 async function artFor(id, n){
   const k = `${id}/art/${n}`; if (cache[k]) return cache[k];
-  const s = await db.doc(`episodes/${id}/scenes/${n}/art`).get(); if (!s.exists) return null;
+  const s = await db.doc(`episodes/${id}/art/${n}`).get(); if (!s.exists) return null;
   return (cache[k] = 'data:image/jpeg;base64,' + s.data().jpegB64);
 }
 async function audioFor(ep, n){

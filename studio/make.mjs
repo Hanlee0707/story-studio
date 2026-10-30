@@ -80,19 +80,35 @@ const list = async (path, where) => (await tool('canvas_list_documents', { canva
 /* ---------- the story ---------- */
 function storyPrompt(ask) {
   return `You write a tiny audio story for a four year old who asked, in her own words: "${ask}".
-Return ONLY JSON: {"title": string (max 6 words), "scenes": [5 scenes]}. Each scene: {"art": string, "lines": [2 to 4 lines]}.
+Give the story through the story tool: a title (max 6 words) and 5 scenes, each with an art prompt and 2 to 4 lines.
 A line is {"speaker": "Sunny" | "Pip", "text": string}. Sunny is the warm storyteller; Pip is a small excited sidekick who reacts, asks, and sometimes makes a sound effect. Mostly Sunny.
 Rules: gentle, funny, cozy, nothing scary, nothing sad at the end; short sentences a four year old follows by ear; if the ask names BTS or its members (Jin, Suga, J-Hope, RM, Jimin, V, Jungkook), they are kind, playful friends in the story; keep real people as characters only, invent nothing about their private lives. One sentence of plot per line. Total about 230 words of spoken text. End warmly in scene 5.
 "art" is a picture prompt for that scene: "children's picture book illustration, soft watercolor, ..." describing the place and action, no text in the image, no logos, friendly faces, at most 40 words.`;
 }
+const STORY_SCHEMA = { type: 'object', additionalProperties: false, required: ['title', 'scenes'], properties: {
+  title: { type: 'string' },
+  scenes: { type: 'array', minItems: 4, maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['art', 'lines'], properties: {
+    art: { type: 'string' },
+    lines: { type: 'array', minItems: 2, maxItems: 4, items: { type: 'object', additionalProperties: false, required: ['speaker', 'text'], properties: { speaker: { type: 'string', enum: ['Sunny', 'Pip'] }, text: { type: 'string' } } } } } } } } };
 async function makeStory(ask) {
-  const r = await curl('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01' }, body: { model: MODEL, max_tokens: 2000, messages: [{ role: 'user', content: storyPrompt(ask) }] } });
+  // Claude hands the story back through a tool call, so the shape is guaranteed and no JSON is parsed out of prose.
+  const r = await curl('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01' }, body: { model: MODEL, max_tokens: 2500, tools: [{ name: 'story', description: 'The finished story.', input_schema: STORY_SCHEMA }], tool_choice: { type: 'auto' }, messages: [{ role: 'user', content: storyPrompt(ask) + '\nCall the story tool with the finished story; say nothing else.' }] } });
   if (r.status >= 300) throw new Error(`claude http ${r.status}: ${r.text.slice(0, 300)}`);
-  const text = JSON.parse(r.text).content.filter(b => b.type === 'text').map(b => b.text).join('');
-  const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
-  const story = JSON.parse(json);
-  if (!story.title || !Array.isArray(story.scenes) || story.scenes.length < 3) throw new Error('story shape');
-  story.scenes = story.scenes.slice(0, 6).map(s => ({ art: String(s.art || '').slice(0, 400), lines: (s.lines || []).slice(0, 5).map(l => ({ speaker: SPEAKERS[l.speaker] ? l.speaker : 'Sunny', text: String(l.text || '').slice(0, 300) })).filter(l => l.text) }));
+  const content = JSON.parse(r.text).content;
+  const use = content.find(b => b.type === 'tool_use');
+  let story;
+  if (use) story = use.input;
+  else {
+    // the model answered in prose: take the JSON object out of it
+    const text = content.filter(b => b.type === 'text').map(b => b.text).join('');
+    const a = text.indexOf('{'), z = text.lastIndexOf('}');
+    if (a < 0 || z < 0) throw new Error('claude: no story');
+    story = JSON.parse(text.slice(a, z + 1));
+  }
+  if (typeof story === 'string') { try { story = JSON.parse(story); } catch {} }
+  if (!story || !Array.isArray(story.scenes)) throw new Error('claude: story shape: ' + JSON.stringify(content.map(b => ({ type: b.type, input: typeof b.input, keys: b.input && typeof b.input === 'object' ? Object.keys(b.input) : undefined }))).slice(0, 300));
+  story.scenes = story.scenes.slice(0, 6).map(s => ({ art: String(s.art || '').slice(0, 400), lines: (s.lines || []).slice(0, 5).map(l => ({ speaker: SPEAKERS[l.speaker] ? l.speaker : 'Sunny', text: String(l.text || '').replace(/\s+/g, ' ').trim().slice(0, 300) })).filter(l => l.text) }));
+  story.title = String(story.title || 'Your story').slice(0, 60);
   return story;
 }
 
@@ -165,7 +181,7 @@ async function makeEpisode({ requestId, kid, ask }) {
     const parts = [];
     for (let i = 0; i < voice.b64.length; i += CHUNK) parts.push(voice.b64.slice(i, i + CHUNK));
     for (let k = 0; k < parts.length; k++) await write(`${epPath}/scenes/${n}/audio/${k}`, { k, b64: parts[k] });
-    await write(`${epPath}/scenes/${n}/art`, { jpegB64: art });
+    await write(`${epPath}/art/${n}`, { jpegB64: art });
     meta.scenes[n] = { ...meta.scenes[n], parts: parts.length, art: true, seconds: voice.seconds };
     if (!firstReady) { firstReady = true; await setStatus('playing'); } else await write(epPath, meta);
     log('scene', n, 'in the db:', parts.length, 'audio parts');
