@@ -226,7 +226,7 @@ async function drawScene(story, scene, n, ref, photos = []) {
   const parts = [];
   if (ref) parts.push({ inlineData: { mimeType: ref.mime, data: ref.b64 } });
   for (const ph of photos) parts.push({ inlineData: { mimeType: ph.mime, data: ph.b64 } });
-  const photoNote = photos.length ? ` The ${photos.length === 1 ? 'photo is a reference' : 'photos are references, in order,'} for how ${photos.map(p => p.name).join(', ')} really look${photos.length === 1 ? 's' : ''}: draw ${photos.length === 1 ? 'them' : 'each'} as a friendly cartoon character with the same gender, hair, face shape, build and outfit style, never as a photo.` : '';
+  const photoNote = photos.length ? ` The ${photos.length === 1 ? 'photo is a reference' : 'photos are references, in order,'} for how ${photos.map(p => p.name).join(', ')} really look${photos.length === 1 ? 's' : ''}: draw ${photos.length === 1 ? 'them' : 'each'} as a friendly cartoon character with the same gender, age (a grown-up stays a grown-up), hair, face shape, build and outfit style, never as a photo.` : '';
   parts.push({ text: ref
     ? `Draw the next picture of the same picture book. Keep exactly the same characters, faces, outfits, colors, brush and lighting as the first picture. Style: ${story.style}. Cast: ${story.cast}. New scene: ${scene.art}. No text, no letters, no logos.`
     : `${story.style}. Cast, drawn the same in every picture: ${story.cast}.${photoNote} Scene: ${scene.art}. No text, no letters, no logos.` });
