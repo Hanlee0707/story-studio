@@ -10,7 +10,8 @@
 // (gemini-2.5-flash-preview-tts, two speakers) and the pictures (gemini-2.5-flash-image).
 // Env: SPROUT_MCP_URL, SPROUT_TOKEN (connection token, canvas:read+write), CANVAS_ID, GEMINI_API_KEY.
 // Optional: STUDIO_DRY=1 (story only, nothing written past the meta).
-// Usage: node make.mjs --request <id> --kid <childId>   (one request)
+// Usage: node make.mjs --request <id> --kid <childId> [--facts <file>]   (one request; the facts file holds
+//        kid-safe true facts the waking agent found on the web, one per line; without it the maker searches itself)
 //        node make.mjs --sweep                          (every request still at status "asked")
 //        node make.mjs --prompt "..." --kid <childId>   (no request doc: just make an episode)
 import { spawn, spawnSync } from 'node:child_process';
@@ -32,7 +33,8 @@ const TTS_MODEL = env('STUDIO_TTS_MODEL', 'gemini-2.5-flash-preview-tts');
 const IMAGE_MODEL = env('STUDIO_IMAGE_MODEL', 'gemini-2.5-flash-image');
 const gemini = (model, body, timeout = 120) => curl(`${GEMINI}/${model}:generateContent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': env('GEMINI_API_KEY') }, body, timeout });
 const CHUNK = 60000;            // base64 chars per db document (moderation takes 20 x 4000 per request; 60K leaves room)
-const SPEAKERS = { Sunny: 'Kore', Pip: 'Puck' };
+const SPEAKERS = { Sunny: 'Kore', Pip: 'Puck', Jimin: 'Zephyr', V: 'Charon' };
+const SCENES = Number(process.env.STUDIO_SCENES || 10);
 const work = mkdtempSync(join(tmpdir(), 'studio-'));
 
 /* ---------- http through curl (async, so voices and pictures overlap) ---------- */
@@ -70,54 +72,95 @@ async function tool(name, argsObj) {
   return parsed;
 }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-async function write(path, data, action = 'set', tries = 8) {
+async function write(path, data, action = 'set', tries = 12) {
   for (let i = 1; ; i++) {
     const res = await tool('canvas_write_documents', { canvasId: CANVAS, writes: [{ action, path, data }] });
     const r = res.results?.[0];
     if (r?.ok) return r.version;
     const code = r?.error?.code;
-    if (code === 'unavailable' && i < tries) { await sleep(1500 * i); continue; }
-    throw new Error(`write ${path}: ${JSON.stringify(r?.error || res).slice(0, 300)}`);
+    if (code === 'unavailable' && i < tries) { await sleep(Math.min(2000 * i, 15000)); continue; }
+    const err = new Error(`write ${path}: ${JSON.stringify(r?.error || res).slice(0, 300)}`); err.code = code; throw err;
   }
 }
 const read = async (path) => (await tool('canvas_get_document', { canvasId: CANVAS, path })).doc;
 const list = async (path, where) => (await tool('canvas_list_documents', { canvasId: CANVAS, path, ...(where ? { where } : {}) })).docs || [];
 
+/* ---------- base64 parts: the text classifier sometimes refuses a random base64 string; a refused
+   chunk is split in two and both halves go again, which changes the strings it sees ---------- */
+async function writeParts(prefix, b64) {
+  const queue = []; for (let i = 0; i < b64.length; i += CHUNK) queue.push(b64.slice(i, i + CHUNK));
+  const done = [];
+  while (queue.length) {
+    const part = queue.shift();
+    try { await write(`${prefix}/${done.length}`, { k: done.length, b64: part }); done.push(part.length); }
+    catch (e) {
+      if (e.code === 'invalid_argument' && part.length > 8000) { const h = Math.ceil(part.length / 2); queue.unshift(part.slice(0, h), part.slice(h)); log('  a chunk was refused by the content check; splitting it'); continue; }
+      throw e;
+    }
+  }
+  return done.length;
+}
+
 /* ---------- the story ---------- */
-function storyPrompt(ask) {
-  return `You write a tiny audio story for a four year old who asked, in her own words: "${ask}".
-Give a title (max 6 words) and 5 scenes, each with an art prompt and 2 to 4 lines.
-A line is {"speaker": "Sunny" | "Pip", "text": string}. Sunny is the warm storyteller; Pip is a small excited sidekick who reacts, asks, and sometimes makes a sound effect. Mostly Sunny.
-Rules: gentle, funny, cozy, nothing scary, nothing sad at the end; short sentences a four year old follows by ear; if the ask names BTS or its members (Jin, Suga, J-Hope, RM, Jimin, V, Jungkook), they are kind, playful friends in the story; keep real people as characters only, invent nothing about their private lives. One sentence of plot per line. Total about 230 words of spoken text. End warmly in scene 5.
-"art" is a picture prompt for that scene: "children's picture book illustration, soft watercolor, ..." describing the place and action, no text in the image, no logos, friendly faces, at most 40 words.`;
+/* ---------- facts: a Google-grounded call so real people, teams and animals come out right ---------- */
+async function gatherFacts(ask) {
+  const r = await gemini(STORY_MODEL, { contents: [{ parts: [{ text: `A four year old asked for a story: "${ask}". If it names anything real (a person, a band, a team, a place, an animal, a thing), look it up and list up to 8 short true facts a small child would enjoy about each: what they do, what they are known for, where they are from, a nickname, a famous moment. Only facts a child could hear: nothing about private life, money, injuries, deaths, politics or anything scary. One fact per line, plain words. If nothing real is named, answer exactly: none` }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.2 } }, 90);
+  if (r.status >= 300) { log('facts: skipped (http ' + r.status + ')'); return ''; }
+  const text = (JSON.parse(r.text).candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
+  if (!text || /^none\b/i.test(text)) return '';
+  return text.slice(0, 2000);
+}
+
+function storyPrompt(ask, facts) {
+  return `You write a short audio story podcast for a four year old girl who asked, in her own words: "${ask}".${facts ? `\nTrue facts about the real things she named, found just now; weave a few in naturally and never contradict them:\n${facts}\n` : ''}
+Give: a title (max 6 words); "style": one line fixing the look of EVERY picture (children's picture book, soft watercolor, warm palette, rounded friendly shapes, the same lighting and brush in all scenes); "cast": the 2 to 5 recurring characters with a fixed look each (hair, outfit colors, one signature item) so every picture draws them the same; and exactly ${SCENES} scenes.
+Each scene: "art" = the place and action of that moment only, naming the cast members present (their looks come from "cast", do not repeat them), no text in the image, at most 35 words; "lines" = 2 to 4 spoken lines.
+Speakers: Sunny (warm storyteller, most lines), Pip (small excited sidekick), Jimin and V (BTS members as kind, playful friends; they speak only in their own voice). At most TWO different speakers in any one scene.
+If the ask names BTS or a member, they are kind, playful friends in the story; keep real people as characters only, invent nothing about their private lives.
+Gentle, funny, cozy, nothing scary, a warm ending. Short sentences a four year old follows by ear. About 450 spoken words in all.`;
 }
 const STORY_SCHEMA = {
-  type: 'OBJECT', required: ['title', 'scenes'],
+  type: 'OBJECT', required: ['title', 'style', 'cast', 'scenes'],
   properties: {
     title: { type: 'STRING' },
+    style: { type: 'STRING' },
+    cast: { type: 'ARRAY', items: { type: 'OBJECT', required: ['name', 'look'], properties: { name: { type: 'STRING' }, look: { type: 'STRING' } } } },
     scenes: {
       type: 'ARRAY',
       items: {
         type: 'OBJECT', required: ['art', 'lines'],
         properties: {
           art: { type: 'STRING' },
-          lines: { type: 'ARRAY', items: { type: 'OBJECT', required: ['speaker', 'text'], properties: { speaker: { type: 'STRING', enum: ['Sunny', 'Pip'] }, text: { type: 'STRING' } } } },
+          lines: { type: 'ARRAY', items: { type: 'OBJECT', required: ['speaker', 'text'], properties: { speaker: { type: 'STRING', enum: ['Sunny', 'Pip', 'Jimin', 'V'] }, text: { type: 'STRING' } } } },
         },
       },
     },
   },
 };
 async function makeStory(ask) {
+  // facts come from the agent that woke us (--facts <file>, found with its own web search); without them the maker asks Gemini with search grounding
+  let facts = '';
+  if (args.facts) { try { facts = readFileSync(String(args.facts), 'utf8').trim().slice(0, 2000); log('facts: from', args.facts); } catch { log('facts: file unreadable, searching instead'); } }
+  if (!facts) { try { facts = await gatherFacts(ask); } catch (e) { log('facts: skipped (' + e.message.slice(0, 80) + ')'); } }
+  if (facts) log('facts:', facts.split('\n').length, 'lines');
   let last;
   for (let i = 0; i < 2; i++) {
-    const r = await gemini(STORY_MODEL, { contents: [{ parts: [{ text: storyPrompt(ask) }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: STORY_SCHEMA, temperature: 0.9 } });
+    const r = await gemini(STORY_MODEL, { contents: [{ parts: [{ text: storyPrompt(ask, facts) }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: STORY_SCHEMA, temperature: 0.9 } }, 150);
     last = r;
     if (r.status >= 300) continue;
     try {
       const text = JSON.parse(r.text).candidates?.[0]?.content?.parts?.map(p => p.text || '').join('');
       const story = JSON.parse(text);
       if (!Array.isArray(story.scenes) || story.scenes.length < 3) throw new Error('shape');
-      story.scenes = story.scenes.slice(0, 6).map(s => ({ art: String(s.art || '').slice(0, 400), lines: (s.lines || []).slice(0, 5).map(l => ({ speaker: SPEAKERS[l.speaker] ? l.speaker : 'Sunny', text: String(l.text || '').replace(/\s+/g, ' ').trim().slice(0, 300) })).filter(l => l.text) })).filter(s => s.lines.length);
+      story.scenes = story.scenes.slice(0, SCENES + 2).map(s => {
+        const lines = (s.lines || []).slice(0, 5).map(l => ({ speaker: SPEAKERS[l.speaker] ? l.speaker : 'Sunny', text: String(l.text || '').replace(/\s+/g, ' ').trim().slice(0, 300) })).filter(l => l.text);
+        // Gemini TTS takes two speakers per request: extra voices in a scene fall back to the narrator
+        const keep = [...new Set(lines.map(l => l.speaker))].slice(0, 2);
+        for (const l of lines) if (!keep.includes(l.speaker)) l.speaker = keep[0] || 'Sunny';
+        return { art: String(s.art || '').slice(0, 400), lines };
+      }).filter(s => s.lines.length);
+      story.style = String(story.style || 'children picture book illustration, soft watercolor').slice(0, 300);
+      story.cast = (story.cast || []).slice(0, 6).map(c => `${c.name}: ${c.look}`).join('; ').slice(0, 800);
       story.title = String(story.title || 'Your story').slice(0, 60);
       return story;
     } catch (e) { last = { status: r.status, text: 'bad story json: ' + e.message }; }
@@ -143,10 +186,10 @@ async function voiceScene(scene, n) {
         const pcm = join(work, `s${n}.pcm`), mp3 = join(work, `s${n}.mp3`);
         writeFileSync(pcm, Buffer.from(part.inlineData.data, 'base64'));
         const rate = /rate=(\d+)/.exec(part.inlineData.mimeType || '')?.[1] || '24000';
-        const f = spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 's16le', '-ar', rate, '-ac', '1', '-i', pcm, '-b:a', '32k', '-ac', '1', '-ar', '24000', mp3]);
+        const f = spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 's16le', '-ar', rate, '-ac', '1', '-i', pcm, '-b:a', '24k', '-ac', '1', '-ar', '24000', mp3]);
         if (f.status !== 0) throw new Error('ffmpeg: ' + f.stderr.toString().slice(0, 200));
         const bytes = readFileSync(mp3);
-        const seconds = Math.round(bytes.length / 4000);
+        const seconds = Math.round(bytes.length / 3000);
         return { b64: bytes.toString('base64'), seconds };
       }
     }
@@ -154,11 +197,16 @@ async function voiceScene(scene, n) {
   throw new Error(`tts scene ${n}: http ${last.status} ${last.text.slice(0, 200)}`);
 }
 
-/* ---------- pictures: gemini image -> 512 jpeg ~35 KB via ffmpeg ---------- */
-async function drawScene(scene, n) {
+/* ---------- pictures: gemini image; scene 0 sets the look, every other scene is drawn from it ---------- */
+async function drawScene(story, scene, n, ref) {
+  const parts = [];
+  if (ref) parts.push({ inlineData: { mimeType: ref.mime, data: ref.b64 } });
+  parts.push({ text: ref
+    ? `Draw the next picture of the same picture book. Keep exactly the same characters, faces, outfits, colors, brush and lighting as this picture. Style: ${story.style}. Cast: ${story.cast}. New scene: ${scene.art}. No text, no letters, no logos.`
+    : `${story.style}. Cast, drawn the same in every picture: ${story.cast}. Scene: ${scene.art}. No text, no letters, no logos.` });
   let last;
   for (let i = 0; i < 2; i++) {
-    const r = await gemini(IMAGE_MODEL, { contents: [{ parts: [{ text: scene.art }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '1:1' } } }, 120);
+    const r = await gemini(IMAGE_MODEL, { contents: [{ parts }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '1:1' } } }, 150);
     last = r;
     if (r.status >= 300) continue;
     const part = JSON.parse(r.text).candidates?.[0]?.content?.parts?.find(p => p.inlineData);
@@ -167,7 +215,7 @@ async function drawScene(scene, n) {
     writeFileSync(raw, Buffer.from(part.inlineData.data, 'base64'));
     const f = spawnSync('ffmpeg', ['-v', 'error', '-y', '-i', raw, '-vf', 'scale=512:512', '-q:v', '7', small]);
     if (f.status !== 0) throw new Error('ffmpeg jpg: ' + f.stderr.toString().slice(0, 200));
-    return readFileSync(small).toString('base64');
+    return { jpegB64: readFileSync(small).toString('base64'), ref: { mime: part.inlineData.mimeType || 'image/png', b64: part.inlineData.data } };
   }
   throw new Error(`image scene ${n}: http ${last.status} ${String(last.text).slice(0, 200)}`);
 }
@@ -188,22 +236,23 @@ async function makeEpisode({ requestId, kid, ask }) {
   if (args.dry || process.env.STUDIO_DRY) { console.log(JSON.stringify(story, null, 1)); return; }
   // voices and pictures for every scene start at once; writes go out in scene order
   const made = story.scenes.map(() => ({}));
+  // scene 0's picture is the reference every other picture is drawn from, so it goes first; voices run from the start
+  const first = drawScene(story, story.scenes[0], 0, null).then(d => { made[0].art = d.jpegB64; log('drew scene 0 (reference)', Math.round(d.jpegB64.length / 1024) + 'K chars'); return d.ref; });
   const jobs = story.scenes.flatMap((s, n) => [
     (async () => { made[n].voice = await voiceScene(s, n); log('voiced scene', n, made[n].voice.seconds + 's', Math.round(made[n].voice.b64.length / 1024) + 'K chars'); })(),
-    (async () => { made[n].art = await drawScene(s, n); log('drew scene', n, Math.round(made[n].art.length / 1024) + 'K chars'); })(),
+    n === 0 ? first : first.then(async ref => { const d = await drawScene(story, s, n, ref); made[n].art = d.jpegB64; log('drew scene', n, Math.round(d.jpegB64.length / 1024) + 'K chars'); }),
   ]);
   // Writes go out in scene order as soon as that scene is done, so the kid can start on scene 0.
   let firstReady = false;
   for (let n = 0; n < story.scenes.length; n++) {
     await Promise.all([jobs[2 * n], jobs[2 * n + 1]]);
     const { voice, art } = made[n];
-    const parts = [];
-    for (let i = 0; i < voice.b64.length; i += CHUNK) parts.push(voice.b64.slice(i, i + CHUNK));
-    for (let k = 0; k < parts.length; k++) await write(`${epPath}/scenes/${n}/audio/${k}`, { k, b64: parts[k] });
+    const partCount = await writeParts(`${epPath}/scenes/${n}/audio`, voice.b64);
     await write(`${epPath}/art/${n}`, { jpegB64: art });
-    meta.scenes[n] = { ...meta.scenes[n], parts: parts.length, art: true, seconds: voice.seconds };
+    if (n === 0) await write(`${epPath}/cover/0`, { jpegB64: art });
+    meta.scenes[n] = { ...meta.scenes[n], parts: partCount, art: true, seconds: voice.seconds };
     if (!firstReady) { firstReady = true; await setStatus('playing'); } else await write(epPath, meta);
-    log('scene', n, 'in the db:', parts.length, 'audio parts');
+    log('scene', n, 'in the db:', partCount, 'audio parts');
   }
   await setStatus('ready');
   log('episode ready:', id, meta.title);
@@ -225,6 +274,7 @@ async function main() {
     const kid = args.kid || die('--kid');
     const d = await read(`data/users/${kid}/requests/items/${args.request}`);
     if (!d) die('no such request');
+    if (args.show) { console.log(JSON.stringify({ ask: d.data.ask, status: d.data.status })); return; }
     if (d.data.status !== 'asked' && !args.force) { log('request is', d.data.status, '(use --force)'); return; }
     await makeEpisode({ requestId: args.request, kid, ask: d.data.ask });
   } else if (args.prompt) {

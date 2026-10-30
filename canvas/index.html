@@ -3,65 +3,70 @@
 <meta name="sprout-web-sites" content="https://read-along-eight.vercel.app">
 <title>Story Studio</title>
 <style>
-:root{--ink:#2b2340;--soft:#6b6480;--paper:#fff8ef;--card:#ffffff;--line:#efe3d2;--sun:#ffb703;--berry:#e4567b;--sky:#5ab0ea;--leaf:#5fbf8a;--r:22px}
+:root{--ink:#1d1633;--soft:#7a7290;--paper:#fff6ea;--card:#fff;--sun:#ffb703;--berry:#ff5c8a;--berryD:#d9426e;--plum:#2b2340;--leaf:#4fc98f;--leafD:#2f9f69;--r:26px;--bottom:calc(172px + env(safe-area-inset-bottom))}
 *{box-sizing:border-box}html,body{margin:0;height:100%}
-body{font-family:-apple-system,"SF Pro Rounded",system-ui,sans-serif;background:var(--paper);color:var(--ink);-webkit-user-select:none;user-select:none}
-main{min-height:100%;padding:calc(18px + var(--canvas-safe-top,0px)) 16px calc(170px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;max-width:560px;margin:0 auto}
+body{font-family:-apple-system,"SF Pro Rounded","SF Pro Display",system-ui,sans-serif;background:var(--paper);color:var(--ink);-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;background:radial-gradient(900px 500px at 20% -10%,#ffe3b3 0,transparent 60%),radial-gradient(700px 500px at 110% 20%,#ffd6e2 0,transparent 60%),radial-gradient(600px 400px at 50% 110%,#d9f3e6 0,transparent 60%);pointer-events:none;z-index:-1}
+main{min-height:100%;padding:calc(14px + var(--canvas-safe-top,0px)) 18px var(--bottom);display:flex;flex-direction:column;gap:16px;max-width:600px;margin:0 auto}
 [hidden]{display:none!important}
-.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px}.brand .dot{width:34px;height:34px;border-radius:50%;background:var(--berry);display:grid;place-items:center;font-size:18px;box-shadow:0 4px 0 #c43f63}
-h1{font-size:28px;line-height:1.15;margin:4px 0 0;font-weight:900}
-.chips{display:flex;flex-wrap:wrap;gap:8px}.chip{border:2px solid var(--line);background:var(--card);border-radius:999px;padding:10px 14px;font-size:16px;font-weight:700;color:var(--ink)}.chip:active{background:#fff1d6}
-.mic{align-self:center;width:150px;height:150px;border-radius:50%;border:0;background:var(--berry);color:#fff;font-size:58px;box-shadow:0 8px 0 #c43f63, 0 0 0 0 rgba(228,86,123,.35);transition:transform .08s;display:grid;place-items:center;touch-action:none}
-.mic.on{transform:scale(.96);box-shadow:0 4px 0 #c43f63,0 0 0 18px rgba(228,86,123,.22);animation:pulse 1.1s infinite}
-@keyframes pulse{50%{box-shadow:0 4px 0 #c43f63,0 0 0 28px rgba(228,86,123,.08)}}
-.hint{text-align:center;color:var(--soft);font-weight:700;font-size:15px;min-height:20px}
-.heard{background:var(--card);border:2px dashed var(--line);border-radius:var(--r);padding:14px;font-size:20px;font-weight:700;min-height:64px;line-height:1.3}
-.heard:empty::before{content:"Hold the button and tell me your story idea";color:#b9b2c6;font-weight:600;font-size:17px}
-.typed{display:flex;gap:8px}.typed input{flex:1;font:inherit;font-size:16px;padding:10px 12px;border:2px solid var(--line);border-radius:14px;background:#fff}
-.btn{border:0;border-radius:var(--r);padding:16px 18px;font-size:20px;font-weight:900;color:#fff;background:var(--leaf);box-shadow:0 6px 0 #3f9a69}.btn:disabled{opacity:.45;box-shadow:none}.btn.alt{background:var(--sky);box-shadow:0 6px 0 #3b8ec4}.btn.ghost{background:#fff;color:var(--ink);border:2px solid var(--line);box-shadow:none;font-size:17px;padding:12px 16px}
-.btn:active{transform:translateY(3px);box-shadow:none}
-.sec{font-weight:900;font-size:17px;color:var(--soft);margin-top:6px}
-.shelf{display:flex;flex-direction:column;gap:10px}.ep{display:flex;align-items:center;gap:12px;background:var(--card);border:2px solid var(--line);border-radius:18px;padding:10px 12px;text-align:left;font:inherit;color:inherit}.ep img{width:56px;height:56px;border-radius:12px;object-fit:cover;background:#f3e9da}.ep .t{font-weight:900;font-size:17px}.ep .s{color:var(--soft);font-size:14px;font-weight:700}
-.empty{color:#b9b2c6;font-weight:700;text-align:center;padding:10px}
-.record{align-self:center;width:170px;height:170px;border-radius:50%;background:radial-gradient(circle,var(--sun) 0 18%,#2b2340 19% 100%);box-shadow:0 10px 24px rgba(0,0,0,.18);animation:spin 2.4s linear infinite;position:relative}.record::after{content:"";position:absolute;inset:40%;border-radius:50%;border:2px dashed #6b6480}
+.brand{display:flex;align-items:center;gap:12px;font-weight:900;font-size:19px;letter-spacing:-.01em}.brand .dot{width:40px;height:40px;border-radius:14px;background:linear-gradient(145deg,var(--berry),#ff8fb1);display:grid;place-items:center;font-size:20px;box-shadow:0 6px 14px rgba(255,92,138,.35)}
+h1{font-size:30px;line-height:1.1;margin:0;font-weight:900;letter-spacing:-.02em}
+.sub{color:var(--soft);font-weight:700;font-size:15px;line-height:1.35}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:4px 18px 8px;margin:0 -18px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}.chip{flex:0 0 auto;border:0;background:var(--card);border-radius:999px;padding:12px 16px;font-size:16px;font-weight:800;color:var(--ink);box-shadow:0 4px 12px rgba(43,35,64,.08)}.chip:active{transform:scale(.97);background:#fff1d6}
+.stage{display:flex;flex-direction:column;align-items:center;gap:10px;padding:10px 0 4px}
+.mic{width:168px;height:168px;border-radius:50%;border:0;background:radial-gradient(circle at 35% 30%,#ff8fb1,var(--berry) 60%,var(--berryD));color:#fff;font-size:66px;box-shadow:0 14px 30px rgba(255,92,138,.45),inset 0 -8px 0 rgba(0,0,0,.12);display:grid;place-items:center;touch-action:none;transition:transform .1s}
+.mic.on{transform:scale(1.06);animation:pulse 1.1s infinite}
+@keyframes pulse{0%{box-shadow:0 14px 30px rgba(255,92,138,.45),0 0 0 0 rgba(255,92,138,.45)}100%{box-shadow:0 14px 30px rgba(255,92,138,.45),0 0 0 34px rgba(255,92,138,0)}}
+.hint{text-align:center;color:var(--soft);font-weight:800;font-size:15px;min-height:20px}
+.heard{background:var(--card);border-radius:var(--r);padding:16px 18px;font-size:21px;font-weight:800;min-height:70px;line-height:1.3;box-shadow:0 8px 24px rgba(43,35,64,.08)}
+.heard:empty::before{content:"Hold the big button and tell me your story idea";color:#c2bacf;font-weight:700;font-size:17px}
+.typed{display:flex;gap:8px}.typed input{flex:1;font:inherit;font-size:16px;padding:12px 14px;border:0;border-radius:16px;background:#fff;box-shadow:0 4px 12px rgba(43,35,64,.08)}
+.btn{border:0;border-radius:var(--r);padding:18px 20px;font-size:21px;font-weight:900;color:#fff;background:linear-gradient(135deg,var(--leaf),var(--leafD));box-shadow:0 10px 22px rgba(47,159,105,.35)}.btn:disabled{opacity:.4;box-shadow:none;filter:grayscale(.4)}.btn.alt{background:linear-gradient(135deg,#6cc0f5,#3b8ec4);box-shadow:0 10px 22px rgba(59,142,196,.35)}.btn.ghost{background:#fff;color:var(--ink);box-shadow:0 4px 12px rgba(43,35,64,.08);font-size:17px;padding:14px 16px}
+.btn:active{transform:translateY(2px) scale(.99)}
+.sec{font-weight:900;font-size:18px;margin-top:4px;display:flex;align-items:baseline;gap:8px}.sec small{color:var(--soft);font-weight:700;font-size:14px}
+.shelf{display:grid;grid-template-columns:1fr 1fr;gap:12px}.ep{position:relative;border:0;padding:0;border-radius:22px;overflow:hidden;aspect-ratio:1;background:#eadfcf;box-shadow:0 10px 24px rgba(43,35,64,.14);text-align:left;font:inherit;color:#fff}.ep img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.ep .t{position:absolute;left:0;right:0;bottom:0;padding:34px 12px 12px;font-weight:900;font-size:16px;line-height:1.15;background:linear-gradient(transparent,rgba(29,22,51,.85));text-shadow:0 1px 2px rgba(0,0,0,.4)}.ep .s{display:block;font-size:12px;font-weight:700;opacity:.85;margin-top:3px}.ep.cooking::after{content:"🎚️ in the studio…";position:absolute;top:10px;left:10px;background:rgba(255,255,255,.9);color:var(--ink);font-size:12px;font-weight:800;padding:5px 9px;border-radius:999px}
+.empty{grid-column:1/-1;color:#c2bacf;font-weight:700;text-align:center;padding:18px}
+.vinyl{align-self:center;width:200px;height:200px;border-radius:50%;background:repeating-radial-gradient(circle,#2b2340 0 3px,#342b4c 3px 5px);box-shadow:0 18px 40px rgba(43,35,64,.3);animation:spin 2.6s linear infinite;position:relative;display:grid;place-items:center}.vinyl img{width:78px;height:78px;border-radius:50%;object-fit:cover;border:4px solid var(--sun);background:var(--sun)}.vinyl::after{content:"";position:absolute;width:10px;height:10px;border-radius:50%;background:var(--paper)}
 @keyframes spin{to{transform:rotate(360deg)}}
-.stages{display:flex;flex-direction:column;gap:8px}.st{display:flex;align-items:center;gap:10px;background:var(--card);border:2px solid var(--line);border-radius:16px;padding:12px 14px;font-weight:800;font-size:17px;color:#b9b2c6}.st .i{width:30px;height:30px;border-radius:50%;background:#f3e9da;display:grid;place-items:center;font-size:16px}
-.st.now{color:var(--ink);border-color:var(--sun)}.st.now .i{background:var(--sun)}.st.done{color:var(--ink)}.st.done .i{background:var(--leaf);color:#fff}
-.art{width:100%;aspect-ratio:1;border-radius:26px;background:#f3e9da;object-fit:cover;box-shadow:0 10px 24px rgba(43,35,64,.15)}
-.cap{font-size:18px;font-weight:700;line-height:1.35;min-height:48px;text-align:center}
-.bar{height:10px;background:#efe3d2;border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;width:0;background:var(--berry);transition:width .25s linear}
-.dots{display:flex;justify-content:center;gap:8px}.dots b{width:12px;height:12px;border-radius:50%;background:#e6dccb}.dots b.now{background:var(--berry)}.dots b.ok{background:var(--leaf)}
-.ctl{display:flex;justify-content:center;gap:14px;align-items:center}.play{width:96px;height:96px;border-radius:50%;border:0;background:var(--berry);color:#fff;font-size:40px;box-shadow:0 7px 0 #c43f63;display:grid;place-items:center}.play:active{transform:translateY(3px);box-shadow:none}.small{width:58px;height:58px;border-radius:50%;border:2px solid var(--line);background:#fff;font-size:22px}
-.row{display:flex;gap:10px}.row .btn{flex:1}
-.toast{position:fixed;left:16px;right:16px;bottom:calc(160px + env(safe-area-inset-bottom));background:var(--ink);color:#fff;padding:12px 14px;border-radius:14px;font-weight:700;text-align:center;opacity:0;transition:opacity .2s;pointer-events:none}.toast.on{opacity:1}
+.stages{display:flex;flex-direction:column;gap:8px}.st{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:18px;padding:13px 15px;font-weight:800;font-size:17px;color:#c2bacf;box-shadow:0 4px 12px rgba(43,35,64,.06);transition:transform .2s}.st .i{width:32px;height:32px;border-radius:50%;background:#f3e9da;display:grid;place-items:center;font-size:16px}
+.st.now{color:var(--ink);transform:scale(1.02);box-shadow:0 10px 24px rgba(255,183,3,.3)}.st.now .i{background:var(--sun)}.st.done{color:var(--ink)}.st.done .i{background:var(--leaf);color:#fff}
+#player{padding-top:0;gap:0}
+.hero{position:relative;margin:0 -18px;height:min(62vh,560px);overflow:hidden;border-radius:0 0 34px 34px;background:#1d1633;box-shadow:0 18px 40px rgba(29,22,51,.3)}
+.hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .7s ease;transform:scale(1.02)}.hero img.show{opacity:1;animation:drift 24s ease-in-out infinite alternate}
+@keyframes drift{from{transform:scale(1.02) translate(0,0)}to{transform:scale(1.1) translate(-2%,-2%)}}
+.hero .top{position:absolute;top:calc(10px + var(--canvas-safe-top,0px));left:14px;right:14px;display:flex;align-items:center;gap:10px;color:#fff;font-weight:900;font-size:17px;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.hero .top .dot{width:34px;height:34px;border-radius:12px;background:rgba(255,255,255,.22);backdrop-filter:blur(8px);display:grid;place-items:center;font-size:17px}
+.hero .cap{position:absolute;left:0;right:0;bottom:0;padding:70px 18px 20px;color:#fff;font-size:19px;font-weight:800;line-height:1.35;background:linear-gradient(transparent,rgba(29,22,51,.92));text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.pbar{margin:18px 0 0;height:12px;border-radius:99px;overflow:hidden;display:flex;gap:3px}.pbar i{flex:1;height:100%;background:#e6dccb;position:relative;overflow:hidden;border-radius:4px}.pbar i b{position:absolute;inset:0;width:0;background:linear-gradient(90deg,var(--berry),#ff8fb1)}.pbar i.ok b{width:100%;background:#f7b9cb}
+.plHint{text-align:center;color:var(--soft);font-weight:800;font-size:14px;min-height:18px;margin-top:10px}
+.ctl{display:flex;justify-content:center;gap:18px;align-items:center;margin-top:10px}.play{width:104px;height:104px;border-radius:50%;border:0;background:radial-gradient(circle at 35% 30%,#ff8fb1,var(--berry) 60%,var(--berryD));color:#fff;font-size:44px;box-shadow:0 14px 30px rgba(255,92,138,.45);display:grid;place-items:center}.play:active{transform:scale(.96)}.small{width:62px;height:62px;border-radius:50%;border:0;background:#fff;font-size:24px;box-shadow:0 6px 16px rgba(43,35,64,.12)}
+.row{display:flex;gap:10px;margin-top:16px}.row .btn{flex:1}
+.toast{position:fixed;left:16px;right:16px;bottom:var(--bottom);background:var(--plum);color:#fff;padding:12px 14px;border-radius:14px;font-weight:700;text-align:center;opacity:0;transition:opacity .2s;pointer-events:none}.toast.on{opacity:1}
 </style></head><body>
 <main id="home">
   <div class="brand"><span class="dot">🎙️</span>Story Studio</div>
   <h1 id="ask">What story do you want tonight?</h1>
+  <div class="sub">Tap an idea, or hold the big button and tell me.</div>
   <div class="chips" id="chips"></div>
-  <button class="mic" id="mic" type="button" aria-label="Hold to talk">🎤</button>
-  <div class="hint" id="hint">Hold to talk</div>
+  <div class="stage"><button class="mic" id="mic" type="button" aria-label="Hold to talk">🎤</button><div class="hint" id="hint">Hold to talk</div></div>
   <div class="heard" id="heard"></div>
   <div class="typed" id="typed" hidden><input id="typeIn" placeholder="or type a story idea"><button class="btn ghost" id="typeOk" type="button">Use</button></div>
   <button class="btn" id="make" type="button" disabled>Make my story ✨</button>
-  <div class="sec">Your stories</div>
+  <div class="sec">Your stories <small id="count"></small></div>
   <div class="shelf" id="shelf"><p class="empty">Nothing here yet. Ask for one!</p></div>
 </main>
 <main id="making" hidden>
   <div class="brand"><span class="dot">🎙️</span>Story Studio</div>
-  <div class="record"></div>
+  <div class="vinyl"><img id="mkArt" alt="" hidden></div>
   <h1 id="mkTitle">The studio is making your story</h1>
-  <div class="hint" id="mkAsk"></div>
+  <div class="sub" id="mkAsk"></div>
   <div class="stages" id="stages"></div>
   <button class="btn ghost" id="mkBack" type="button">Back</button>
 </main>
 <main id="player" hidden>
-  <div class="brand"><span class="dot">🎙️</span><span id="plTitle">Your story</span></div>
-  <img class="art" id="art" alt="">
-  <div class="cap" id="cap"></div>
-  <div class="bar"><i id="barFill"></i></div>
-  <div class="dots" id="dots"></div>
-  <div class="hint" id="plHint"></div>
+  <div class="hero"><img id="artA" alt=""><img id="artB" alt=""><div class="top"><span class="dot">🎙️</span><span id="plTitle">Your story</span></div><div class="cap" id="cap"></div></div>
+  <div class="pbar" id="pbar"></div>
+  <div class="plHint" id="plHint"></div>
   <div class="ctl"><button class="small" id="back10" type="button" aria-label="Back ten seconds">⟲</button><button class="play" id="play" type="button" aria-label="Play">▶</button><button class="small" id="next" type="button" aria-label="Next scene">⏭</button></div>
   <div class="row"><button class="btn ghost" id="plHome" type="button">More stories</button><button class="btn alt" id="done" type="button">Done ✓</button></div>
 </main>
@@ -69,12 +74,12 @@ h1{font-size:28px;line-height:1.15;margin:4px 0 0;font-weight:900}
 <div class="toast" id="toast"></div>
 <script>
 const CFG = { wake: 'https://read-along-eight.vercel.app/api/wake', key: '0ce8348d528e33a7f98ae72ee9b5ba48' };
-const IDEAS = ['BTS go camping', 'Jimin and a lost puppy', 'BTS bake a giant cake', 'Jungkook learns to fly'];
+const IDEAS = ['BTS go camping', 'Jimin finds a lost puppy', 'BTS bake a giant cake', 'V learns to fly', 'A sleepover in a treehouse'];
 const STAGES = [['asked', 'Sent to the studio'], ['writing', 'Writing your story'], ['voicing', 'Voices and pictures'], ['playing', 'First scene is ready!']];
 const $ = id => document.getElementById(id);
 const hasSprout = typeof sprout !== 'undefined' && sprout;
 const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-let db = null, self = 'preview', ask = '', unsubShelf = null, episodes = [];
+let db = null, self = 'preview', ask = '', episodes = [];
 function show(id){ for (const m of ['home', 'making', 'player']) $(m).hidden = m !== id; window.scrollTo(0, 0); }
 let toastT; function toast(t){ $('toast').textContent = t; $('toast').classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => $('toast').classList.remove('on'), 2600); }
 function say(text){ if (hasSprout && sprout.tts && typeof sprout.tts.speak === 'function'){ try { const p = sprout.tts.speak({ text }); if (p && p.catch) p.catch(() => {}); } catch {} } }
@@ -109,11 +114,7 @@ async function poll(){
   } catch {} finally { polling = false; }
 }
 function stopHost(){ try { const p = sprout.speech.stop(); if (p && p.catch) p.catch(() => {}); } catch {} }
-async function holdEnd(e){
-  if (e) e.preventDefault();
-  if (!listening){ gen++; return; }
-  await endListening(true);
-}
+async function holdEnd(e){ if (e) e.preventDefault(); if (!listening){ gen++; return; } await endListening(true); }
 async function endListening(fromHand){
   listening = false; gen++; clearInterval(pollT); pollT = null; $('mic').classList.remove('on');
   if (fromHand){ try { await sprout.speech.stop(); const t = await sprout.speech.poll({ since: cursor }); for (const w of (t.words || []).concat(t.live || [])) words.push(w.text); } catch {} }
@@ -146,11 +147,11 @@ $('make').onclick = async () => {
 };
 function openMaking(id, text){
   current = { id, status: 'asked', title: '', scenes: [] };
-  $('mkAsk').textContent = `“${text}”`; $('mkTitle').textContent = 'The studio is making your story';
+  $('mkAsk').textContent = `“${text}”`; $('mkTitle').textContent = 'The studio is making your story'; $('mkArt').hidden = true;
   renderStages('asked'); show('making');
   if (unsubReq) unsubReq(); if (unsubEp) unsubEp();
   unsubReq = db.doc(`data/users/${self}/requests/items/${id}`).onSnapshot(s => { if (!s.exists) return; const d = s.data(); if (current && current.id === id) renderStages(d.status); }, () => {});
-  unsubEp = db.doc(`episodes/${id}`).onSnapshot(s => { if (!s.exists || !current || current.id !== id) return; const m = s.data(); Object.assign(current, m); if (m.title) $('mkTitle').textContent = m.title; if (m.status === 'playing' || m.status === 'ready'){ if ($('player').hidden) openPlayer(current); else refreshPlayer(); } }, () => {});
+  unsubEp = db.doc(`episodes/${id}`).onSnapshot(s => { if (!s.exists || !current || current.id !== id) return; const m = s.data(); Object.assign(current, m); if (m.title) $('mkTitle').textContent = m.title; coverFor(id).then(src => { if (src && $('mkArt').hidden){ $('mkArt').src = src; $('mkArt').hidden = false; } }).catch(() => {}); if (m.status === 'playing' || m.status === 'ready'){ if ($('player').hidden) openPlayer(current); else refreshPlayer(); } }, () => {});
 }
 function renderStages(status){
   const idx = STAGES.findIndex(s => s[0] === status), at = status === 'ready' ? STAGES.length : idx;
@@ -161,13 +162,21 @@ $('mkBack').onclick = () => { show('home'); };
 /* ---------- the shelf ---------- */
 function renderShelf(){
   const mine = episodes.filter(e => e.title && (e.status === 'playing' || e.status === 'ready' || e.status === 'voicing'));
-  $('shelf').innerHTML = mine.length ? mine.map(e => `<button class="ep" type="button" data-id="${esc(e.id)}"><img alt="" data-art="${esc(e.id)}"><span><span class="t">${esc(e.title)}</span><br><span class="s">${e.status === 'ready' ? (e.scenes || []).length + ' scenes' : 'still in the studio…'}</span></span></button>`).join('') : '<p class="empty">Nothing here yet. Ask for one!</p>';
-  for (const img of $('shelf').querySelectorAll('img[data-art]')) artFor(img.dataset.art, 0).then(src => { if (src) img.src = src; }).catch(() => {});
+  $('count').textContent = mine.length ? mine.length + (mine.length === 1 ? ' story' : ' stories') : '';
+  $('shelf').innerHTML = mine.length ? mine.map(e => `<button class="ep ${e.status === 'ready' ? '' : 'cooking'}" type="button" data-id="${esc(e.id)}"><img alt="" data-cover="${esc(e.id)}"><span class="t">${esc(e.title)}<span class="s">${(e.scenes || []).length} scenes</span></span></button>`).join('') : '<p class="empty">Nothing here yet. Ask for one!</p>';
+  for (const img of $('shelf').querySelectorAll('img[data-cover]')) coverFor(img.dataset.cover).then(src => { if (src) img.src = src; }).catch(() => {});
 }
 $('shelf').onclick = e => { const b = e.target.closest('.ep'); if (!b) return; const ep = episodes.find(x => x.id === b.dataset.id); if (ep) openPlayer(ep); };
 
 /* ---------- the player: scenes arrive as base64 documents; play one while the next loads ---------- */
 const au = $('au'); const cache = {};
+async function coverFor(id){
+  const k = `${id}/cover`; if (cache[k]) return cache[k];
+  let s = await db.doc(`episodes/${id}/cover/0`).get();
+  if (!s.exists) s = await db.doc(`episodes/${id}/art/0`).get();
+  if (!s.exists) return null;
+  return (cache[k] = 'data:image/jpeg;base64,' + s.data().jpegB64);
+}
 async function artFor(id, n){
   const k = `${id}/art/${n}`; if (cache[k]) return cache[k];
   const s = await db.doc(`episodes/${id}/art/${n}`).get(); if (!s.exists) return null;
@@ -182,10 +191,15 @@ async function audioFor(ep, n){
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return (cache[k] = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' })));
 }
-let ep = null, scene = 0, wantPlay = false, loadingScene = -1;
+let ep = null, scene = 0, wantPlay = false, loadingScene = -1, frontA = false;
+function showArt(src){
+  if (!src) return;
+  const next = frontA ? $('artB') : $('artA'), prev = frontA ? $('artA') : $('artB');
+  next.src = src; next.classList.add('show'); prev.classList.remove('show'); frontA = !frontA;
+}
 function openPlayer(e){
   ep = e; scene = 0; wantPlay = false; au.pause(); au.removeAttribute('src');
-  $('plTitle').textContent = ep.title || 'Your story'; $('cap').textContent = ''; $('art').removeAttribute('src'); $('barFill').style.width = '0';
+  $('plTitle').textContent = ep.title || 'Your story'; $('cap').textContent = ''; $('artA').classList.remove('show'); $('artB').classList.remove('show');
   if (unsubEp && (!current || current.id !== ep.id)){ unsubEp(); unsubEp = null; }
   if (!current || current.id !== ep.id){ current = ep; unsubEp = db.doc(`episodes/${ep.id}`).onSnapshot(s => { if (s.exists && ep && ep.id === s.id) { Object.assign(ep, s.data()); refreshPlayer(); } }, () => {}); }
   show('player'); refreshPlayer(); loadScene(0);
@@ -193,16 +207,17 @@ function openPlayer(e){
 function refreshPlayer(){
   if (!ep) return;
   $('plTitle').textContent = ep.title || 'Your story';
-  const n = (ep.scenes || []).length;
-  $('dots').innerHTML = (ep.scenes || []).map((s, i) => `<b class="${i === scene ? 'now' : s.parts ? 'ok' : ''}"></b>`).join('');
-  $('plHint').textContent = ep.status === 'ready' ? '' : 'The studio is still mixing the next scenes…';
+  const scenes = ep.scenes || [];
+  if ($('pbar').children.length !== scenes.length) $('pbar').innerHTML = scenes.map(() => '<i><b></b></i>').join('');
+  [...$('pbar').children].forEach((el, i) => { el.className = i < scene ? 'ok' : ''; if (i !== scene) el.firstChild.style.width = i < scene ? '100%' : '0'; });
+  $('plHint').textContent = ep.status === 'ready' ? `Scene ${scene + 1} of ${scenes.length}` : 'The studio is still mixing the next scenes…';
   if (wantPlay && loadingScene === -1 && !au.src) loadScene(scene);
 }
 async function loadScene(n, andPlay){
   if (!ep) return; const sc = (ep.scenes || [])[n];
   scene = n; refreshPlayer();
   if (sc) $('cap').textContent = sc.caption || '';
-  artFor(ep.id, n).then(src => { if (src && scene === n) $('art').src = src; }).catch(() => {});
+  artFor(ep.id, n).then(src => { if (scene === n) showArt(src); }).catch(() => {});
   if (!sc || !sc.parts){ $('plHint').textContent = 'The studio is still mixing this scene… it starts by itself'; au.removeAttribute('src'); return; }
   loadingScene = n;
   let url = null; try { url = await audioFor(ep, n); } catch {}
@@ -211,7 +226,8 @@ async function loadScene(n, andPlay){
   if (!url){ $('plHint').textContent = 'This scene did not load, tap next'; return; }
   au.src = url; au.load();
   if (andPlay || wantPlay){ const p = au.play(); if (p && p.catch) p.catch(() => { wantPlay = false; $('play').textContent = '▶'; }); }
-  if (sc.parts && (ep.scenes || [])[n + 1] && (ep.scenes || [])[n + 1].parts) audioFor(ep, n + 1).catch(() => {});
+  const nx = (ep.scenes || [])[n + 1];
+  if (nx && nx.parts){ audioFor(ep, n + 1).catch(() => {}); artFor(ep.id, n + 1).catch(() => {}); }
 }
 $('play').onclick = () => {
   if (!ep) return;
@@ -221,7 +237,7 @@ $('play').onclick = () => {
 };
 au.addEventListener('play', () => { $('play').textContent = '❚❚'; });
 au.addEventListener('pause', () => { if (au.ended) return; $('play').textContent = '▶'; });
-au.addEventListener('timeupdate', () => { if (au.duration) $('barFill').style.width = (au.currentTime / au.duration * 100) + '%'; });
+au.addEventListener('timeupdate', () => { const el = $('pbar').children[scene]; if (el && au.duration) el.firstChild.style.width = (au.currentTime / au.duration * 100) + '%'; });
 au.addEventListener('ended', () => { const next = scene + 1; if (next < (ep.scenes || []).length) loadScene(next, true); else { wantPlay = false; $('play').textContent = '▶'; $('plHint').textContent = 'The end! Tap Done, or ask for another.'; say('The end. Did you like it?'); } });
 $('back10').onclick = () => { if (au.src) au.currentTime = Math.max(0, au.currentTime - 10); };
 $('next').onclick = () => { if (!ep) return; const next = scene + 1; if (next < (ep.scenes || []).length) loadScene(next, wantPlay); };
@@ -237,7 +253,7 @@ $('done').onclick = () => {
   try { if (hasSprout && typeof sprout.use === 'function') db = await sprout.use('db'); } catch { db = null; }
   if (!db){ $('typed').hidden = false; $('hint').textContent = 'Preview: type a story idea'; return; }
   self = db.self || self;
-  unsubShelf = db.collection('episodes').where('kid', '==', self).orderBy('createdAt', 'desc').limit(20).onSnapshot(q => { episodes = q.docs.map(d => Object.assign({ id: d.id }, d.data())); renderShelf(); }, () => {});
+  db.collection('episodes').where('kid', '==', self).orderBy('createdAt', 'desc').limit(20).onSnapshot(q => { episodes = q.docs.map(d => Object.assign({ id: d.id }, d.data())); renderShelf(); }, () => {});
   say('What story do you want tonight?');
 })();
 </script></body></html>
