@@ -163,6 +163,7 @@ async function makeStory(ask) {
       story.people = (story.cast || []).filter(c => c.real && c.wiki).slice(0, 4).map(c => ({ name: String(c.name || ''), wiki: String(c.wiki || '').trim().replace(/ /g, '_') }));
       story.cast = (story.cast || []).slice(0, 6).map(c => `${c.name}: ${c.look}`).join('; ').slice(0, 800);
       story.title = String(story.title || 'Your story').slice(0, 60);
+      story.facts = facts;
       return story;
     } catch (e) { last = { status: r.status, text: 'bad story json: ' + e.message }; }
   }
@@ -198,25 +199,33 @@ async function voiceScene(scene, n) {
   throw new Error(`tts scene ${n}: http ${last.status} ${last.text.slice(0, 200)}`);
 }
 
-/* ---------- reference photos: each real cast member's Wikipedia page image, so the first picture gets the person right ---------- */
-async function referencePhotos(story) {
-  const refs = [];
+/* ---------- reference photos: a real cast member's Wikipedia page image. The waking agent finds the
+   link with its own web tools and writes "Photo: <name> | <url>" into the facts file; Gemini takes the
+   photo by link, so nothing is downloaded here. Without such a line, the maker asks Wikipedia itself
+   (works on a laptop, not in the cloud sandbox). ---------- */
+function photosFromFacts(facts) {
+  const out = [];
+  for (const line of String(facts || '').split('\n')) {
+    const m = /^\s*Photo:\s*(.+?)\s*\|\s*(https?:\/\/\S+)\s*$/i.exec(line);
+    if (m) out.push({ name: m[1].trim(), url: m[2].replace(/[),.]+$/, '') });
+  }
+  return out;
+}
+async function referencePhotos(story, facts) {
+  const refs = [], given = photosFromFacts(facts);
   for (const p of story.people || []) {
+    const hit = given.find(g => g.name.toLowerCase() === p.name.toLowerCase() || p.name.toLowerCase().includes(g.name.toLowerCase()) || g.name.toLowerCase().includes(p.name.toLowerCase()));
+    if (hit) { refs.push({ name: p.name, url: hit.url }); log('reference photo for', p.name, '(link from the facts)'); continue; }
     try {
       const api = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(p.wiki)}&prop=pageimages&format=json&pithumbsize=800&redirects=1`;
-      const r = await curl(api, { headers: { 'user-agent': 'story-studio/1 (sprout stage demo)' }, timeout: 30 });
+      const r = await curl(api, { headers: { 'user-agent': 'story-studio/1 (sprout stage demo)' }, timeout: 20 });
       if (r.status >= 300) throw new Error('http ' + r.status);
       const page = Object.values(JSON.parse(r.text).query?.pages || {})[0];
       const url = page?.thumbnail?.source; if (!url) throw new Error('no page image');
-      const file = join(work, `ref-${refs.length}.jpg`);
-      const g = await curl(url, { headers: { 'user-agent': 'story-studio/1 (sprout stage demo)' }, out: file, timeout: 30 });
-      if (g.status >= 300) throw new Error('image http ' + g.status);
-      const small = join(work, `ref-${refs.length}.small.jpg`);
-      const f = spawnSync('ffmpeg', ['-v', 'error', '-y', '-i', file, '-vf', 'scale=512:-2', '-q:v', '5', small]);
-      if (f.status !== 0) throw new Error('ffmpeg');
-      refs.push({ name: p.name, mime: 'image/jpeg', b64: readFileSync(small).toString('base64') });
-      log('reference photo for', p.name);
+      refs.push({ name: p.name, url: url.split('?')[0] });
+      log('reference photo for', p.name, '(wikipedia)');
     } catch (e) { log('no reference photo for', p.name, '(' + e.message.slice(0, 60) + ')'); }
+    if (refs.length >= 4) break;
   }
   return refs;
 }
@@ -225,7 +234,7 @@ async function referencePhotos(story) {
 async function drawScene(story, scene, n, ref, photos = []) {
   const parts = [];
   if (ref) parts.push({ inlineData: { mimeType: ref.mime, data: ref.b64 } });
-  for (const ph of photos) parts.push({ inlineData: { mimeType: ph.mime, data: ph.b64 } });
+  for (const ph of photos) parts.push(ph.url ? { fileData: { mimeType: 'image/jpeg', fileUri: ph.url } } : { inlineData: { mimeType: ph.mime, data: ph.b64 } });
   const photoNote = photos.length ? ` The ${photos.length === 1 ? 'photo is a reference' : 'photos are references, in order,'} for how ${photos.map(p => p.name).join(', ')} really look${photos.length === 1 ? 's' : ''}: draw ${photos.length === 1 ? 'them' : 'each'} as a friendly cartoon character with the same gender, age (a grown-up stays a grown-up), hair, face shape, build and outfit style, never as a photo.` : '';
   parts.push({ text: ref
     ? `Draw the next picture of the same picture book. Keep exactly the same characters, faces, outfits, colors, brush and lighting as the first picture. Style: ${story.style}. Cast: ${story.cast}. New scene: ${scene.art}. No text, no letters, no logos.`
@@ -263,7 +272,7 @@ async function makeEpisode({ requestId, kid, ask }) {
   // voices and pictures for every scene start at once; writes go out in scene order
   const made = story.scenes.map(() => ({}));
   // scene 0's picture is the reference every other picture is drawn from, so it goes first; voices run from the start
-  const photos = await referencePhotos(story);
+  const photos = await referencePhotos(story, story.facts);
   const first = drawScene(story, story.scenes[0], 0, null, photos).then(d => { made[0].art = d.jpegB64; log('drew scene 0 (reference)', Math.round(d.jpegB64.length / 1024) + 'K chars'); return d.ref; });
   const jobs = story.scenes.flatMap((s, n) => [
     (async () => { made[n].voice = await voiceScene(s, n); log('voiced scene', n, made[n].voice.seconds + 's', Math.round(made[n].voice.b64.length / 1024) + 'K chars'); })(),
