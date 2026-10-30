@@ -156,7 +156,7 @@ async function drawScene(scene, n) {
 /* ---------- one episode ---------- */
 async function makeEpisode({ requestId, kid, ask }) {
   const id = requestId || 'e' + Date.now().toString(36);
-  const epPath = `episodes/${id}`, reqPath = requestId ? `data/users/${kid}/requests/${requestId}` : null;
+  const epPath = `episodes/${id}`, reqPath = requestId ? `data/users/${kid}/requests/items/${requestId}` : null;
   const meta = { id, kid, ask, status: 'writing', title: '', createdAt: new Date().toISOString(), scenes: [] };
   const setStatus = async (status, extra = {}) => { Object.assign(meta, { status }, extra); await write(epPath, meta); if (reqPath) await write(reqPath, { status, episodeId: id }, 'update'); };
   await setStatus('writing');
@@ -198,13 +198,13 @@ async function main() {
     if (!kids.length) die('--sweep needs --kid or STUDIO_KIDS');
     let n = 0;
     for (const kid of kids) {
-      const asked = await list(`data/users/${kid}/requests`, [{ field: 'status', op: '==', value: 'asked' }]);
-      for (const d of asked) { n++; log('request', d.id, 'from', kid); await makeEpisode({ requestId: d.id, kid, ask: d.data.ask }); }
+      const asked = await list(`data/users/${kid}/requests/items`, [{ field: 'status', op: '==', value: 'asked' }]);
+      for (const d of asked) { const rid = String(d.path || d.id || '').split('/').pop(); n++; log('request', rid, 'from', kid); await makeEpisode({ requestId: rid, kid, ask: d.data.ask }); }
     }
     log(n ? `${n} request(s) done` : 'nothing asked');
   } else if (args.request) {
     const kid = args.kid || die('--kid');
-    const d = await read(`data/users/${kid}/requests/${args.request}`);
+    const d = await read(`data/users/${kid}/requests/items/${args.request}`);
     if (!d) die('no such request');
     if (d.data.status !== 'asked' && !args.force) { log('request is', d.data.status, '(use --force)'); return; }
     await makeEpisode({ requestId: args.request, kid, ask: d.data.ask });

@@ -133,7 +133,7 @@ $('make').onclick = async () => {
   if (!db){ toast('The studio is not connected in this preview'); return; }
   const id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   $('make').disabled = true;
-  try { await db.doc(`data/users/${self}/requests/${id}`).set({ ask, status: 'asked', askedAt: new Date().toISOString() }); }
+  try { await db.doc(`data/users/${self}/requests/items/${id}`).set({ ask, status: 'asked', askedAt: new Date().toISOString() }); }
   catch (e) { $('make').disabled = false; toast('That did not send, try again'); return; }
   say('Ooh. I am sending that to the studio. It takes a minute or two.');
   openMaking(id, ask);
@@ -149,7 +149,7 @@ function openMaking(id, text){
   $('mkAsk').textContent = `“${text}”`; $('mkTitle').textContent = 'The studio is making your story';
   renderStages('asked'); show('making');
   if (unsubReq) unsubReq(); if (unsubEp) unsubEp();
-  unsubReq = db.doc(`data/users/${self}/requests/${id}`).onSnapshot(s => { if (!s.exists) return; const d = s.data(); if (current && current.id === id) renderStages(d.status); }, () => {});
+  unsubReq = db.doc(`data/users/${self}/requests/items/${id}`).onSnapshot(s => { if (!s.exists) return; const d = s.data(); if (current && current.id === id) renderStages(d.status); }, () => {});
   unsubEp = db.doc(`episodes/${id}`).onSnapshot(s => { if (!s.exists || !current || current.id !== id) return; const m = s.data(); Object.assign(current, m); if (m.title) $('mkTitle').textContent = m.title; if (m.status === 'playing' || m.status === 'ready'){ if ($('player').hidden) openPlayer(current); else refreshPlayer(); } }, () => {});
 }
 function renderStages(status){
