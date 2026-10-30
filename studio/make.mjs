@@ -104,7 +104,7 @@ async function writeParts(prefix, b64) {
 /* ---------- the story ---------- */
 /* ---------- facts: a Google-grounded call so real people, teams and animals come out right ---------- */
 async function gatherFacts(ask) {
-  const r = await gemini(STORY_MODEL, { contents: [{ parts: [{ text: `A four year old asked for a story: "${ask}". If it names anything real (a person, a band, a team, a place, an animal, a thing), look it up and list up to 8 short true facts a small child would enjoy about each: what they do, what they are known for, where they are from, a nickname, a famous moment. Only facts a child could hear: nothing about private life, money, injuries, deaths, politics or anything scary. One fact per line, plain words. If nothing real is named, answer exactly: none` }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.2 } }, 90);
+  const r = await gemini(STORY_MODEL, { contents: [{ parts: [{ text: `A four year old asked for a story: "${ask}". If it names anything real (a person, a band, a team, a place, an animal, a thing), look it up and list up to 8 short true facts a small child would enjoy about each: what they do, what they are known for, where they are from, a nickname, a famous moment. Only facts a child could hear: nothing about private life, money, injuries, deaths, politics or anything scary. One fact per line, plain words. For each real person also add one line starting with "Looks:" saying whether they are a man, woman, boy or girl, their hair, build and what they usually wear, so an illustrator draws them right. If nothing real is named, answer exactly: none` }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.2 } }, 90);
   if (r.status >= 300) { log('facts: skipped (http ' + r.status + ')'); return ''; }
   const text = (JSON.parse(r.text).candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
   if (!text || /^none\b/i.test(text)) return '';
@@ -113,7 +113,7 @@ async function gatherFacts(ask) {
 
 function storyPrompt(ask, facts) {
   return `You write a short audio story podcast for a four year old girl who asked, in her own words: "${ask}".${facts ? `\nTrue facts about the real things she named, found just now; weave a few in naturally and never contradict them:\n${facts}\n` : ''}
-Give: a title (max 6 words); "style": one line fixing the look of EVERY picture (children's picture book, soft watercolor, warm palette, rounded friendly shapes, the same lighting and brush in all scenes); "cast": the 2 to 5 recurring characters with a fixed look each (hair, outfit colors, one signature item) so every picture draws them the same; and exactly ${SCENES} scenes.
+Give: a title (max 6 words); "style": one line fixing the look of EVERY picture (children's picture book, soft watercolor, warm palette, rounded friendly shapes, the same lighting and brush in all scenes); "cast": the 2 to 5 recurring characters with a fixed look each (hair, outfit colors, one signature item) so every picture draws them the same. For each cast member set "real": true when it is a real person, band member, team or animal species the girl named, with "wiki" = the exact English Wikipedia page title (e.g. "Harry_Kane", "V_(singer)", "Jimin", "Emperor_penguin"); otherwise real false and wiki "". A real person keeps their true gender, hair and usual outfit in "look" (the facts above say how they look); and exactly ${SCENES} scenes.
 Each scene: "art" = the place and action of that moment only, naming the cast members present (their looks come from "cast", do not repeat them), no text in the image, at most 35 words; "lines" = 2 to 4 spoken lines.
 Speakers: Sunny (warm storyteller, most lines), Pip (small excited sidekick), Jimin and V (BTS members as kind, playful friends; they speak only in their own voice). At most TWO different speakers in any one scene.
 If the ask names BTS or a member, they are kind, playful friends in the story; keep real people as characters only, invent nothing about their private lives.
@@ -124,7 +124,7 @@ const STORY_SCHEMA = {
   properties: {
     title: { type: 'STRING' },
     style: { type: 'STRING' },
-    cast: { type: 'ARRAY', items: { type: 'OBJECT', required: ['name', 'look'], properties: { name: { type: 'STRING' }, look: { type: 'STRING' } } } },
+    cast: { type: 'ARRAY', items: { type: 'OBJECT', required: ['name', 'look', 'real', 'wiki'], properties: { name: { type: 'STRING' }, look: { type: 'STRING' }, real: { type: 'BOOLEAN' }, wiki: { type: 'STRING' } } } },
     scenes: {
       type: 'ARRAY',
       items: {
@@ -160,6 +160,7 @@ async function makeStory(ask) {
         return { art: String(s.art || '').slice(0, 400), lines };
       }).filter(s => s.lines.length);
       story.style = String(story.style || 'children picture book illustration, soft watercolor').slice(0, 300);
+      story.people = (story.cast || []).filter(c => c.real && c.wiki).slice(0, 4).map(c => ({ name: String(c.name || ''), wiki: String(c.wiki || '').trim().replace(/ /g, '_') }));
       story.cast = (story.cast || []).slice(0, 6).map(c => `${c.name}: ${c.look}`).join('; ').slice(0, 800);
       story.title = String(story.title || 'Your story').slice(0, 60);
       return story;
@@ -197,13 +198,38 @@ async function voiceScene(scene, n) {
   throw new Error(`tts scene ${n}: http ${last.status} ${last.text.slice(0, 200)}`);
 }
 
+/* ---------- reference photos: each real cast member's Wikipedia page image, so the first picture gets the person right ---------- */
+async function referencePhotos(story) {
+  const refs = [];
+  for (const p of story.people || []) {
+    try {
+      const api = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(p.wiki)}&prop=pageimages&format=json&pithumbsize=800&redirects=1`;
+      const r = await curl(api, { headers: { 'user-agent': 'story-studio/1 (sprout stage demo)' }, timeout: 30 });
+      if (r.status >= 300) throw new Error('http ' + r.status);
+      const page = Object.values(JSON.parse(r.text).query?.pages || {})[0];
+      const url = page?.thumbnail?.source; if (!url) throw new Error('no page image');
+      const file = join(work, `ref-${refs.length}.jpg`);
+      const g = await curl(url, { headers: { 'user-agent': 'story-studio/1 (sprout stage demo)' }, out: file, timeout: 30 });
+      if (g.status >= 300) throw new Error('image http ' + g.status);
+      const small = join(work, `ref-${refs.length}.small.jpg`);
+      const f = spawnSync('ffmpeg', ['-v', 'error', '-y', '-i', file, '-vf', 'scale=512:-2', '-q:v', '5', small]);
+      if (f.status !== 0) throw new Error('ffmpeg');
+      refs.push({ name: p.name, mime: 'image/jpeg', b64: readFileSync(small).toString('base64') });
+      log('reference photo for', p.name);
+    } catch (e) { log('no reference photo for', p.name, '(' + e.message.slice(0, 60) + ')'); }
+  }
+  return refs;
+}
+
 /* ---------- pictures: gemini image; scene 0 sets the look, every other scene is drawn from it ---------- */
-async function drawScene(story, scene, n, ref) {
+async function drawScene(story, scene, n, ref, photos = []) {
   const parts = [];
   if (ref) parts.push({ inlineData: { mimeType: ref.mime, data: ref.b64 } });
+  for (const ph of photos) parts.push({ inlineData: { mimeType: ph.mime, data: ph.b64 } });
+  const photoNote = photos.length ? ` The ${photos.length === 1 ? 'photo is a reference' : 'photos are references, in order,'} for how ${photos.map(p => p.name).join(', ')} really look${photos.length === 1 ? 's' : ''}: draw ${photos.length === 1 ? 'them' : 'each'} as a friendly cartoon character with the same gender, hair, face shape, build and outfit style, never as a photo.` : '';
   parts.push({ text: ref
-    ? `Draw the next picture of the same picture book. Keep exactly the same characters, faces, outfits, colors, brush and lighting as this picture. Style: ${story.style}. Cast: ${story.cast}. New scene: ${scene.art}. No text, no letters, no logos.`
-    : `${story.style}. Cast, drawn the same in every picture: ${story.cast}. Scene: ${scene.art}. No text, no letters, no logos.` });
+    ? `Draw the next picture of the same picture book. Keep exactly the same characters, faces, outfits, colors, brush and lighting as the first picture. Style: ${story.style}. Cast: ${story.cast}. New scene: ${scene.art}. No text, no letters, no logos.`
+    : `${story.style}. Cast, drawn the same in every picture: ${story.cast}.${photoNote} Scene: ${scene.art}. No text, no letters, no logos.` });
   let last;
   for (let i = 0; i < 2; i++) {
     const r = await gemini(IMAGE_MODEL, { contents: [{ parts }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '1:1' } } }, 150);
@@ -237,7 +263,8 @@ async function makeEpisode({ requestId, kid, ask }) {
   // voices and pictures for every scene start at once; writes go out in scene order
   const made = story.scenes.map(() => ({}));
   // scene 0's picture is the reference every other picture is drawn from, so it goes first; voices run from the start
-  const first = drawScene(story, story.scenes[0], 0, null).then(d => { made[0].art = d.jpegB64; log('drew scene 0 (reference)', Math.round(d.jpegB64.length / 1024) + 'K chars'); return d.ref; });
+  const photos = await referencePhotos(story);
+  const first = drawScene(story, story.scenes[0], 0, null, photos).then(d => { made[0].art = d.jpegB64; log('drew scene 0 (reference)', Math.round(d.jpegB64.length / 1024) + 'K chars'); return d.ref; });
   const jobs = story.scenes.flatMap((s, n) => [
     (async () => { made[n].voice = await voiceScene(s, n); log('voiced scene', n, made[n].voice.seconds + 's', Math.round(made[n].voice.b64.length / 1024) + 'K chars'); })(),
     n === 0 ? first : first.then(async ref => { const d = await drawScene(story, s, n, ref); made[n].art = d.jpegB64; log('drew scene', n, Math.round(d.jpegB64.length / 1024) + 'K chars'); }),
