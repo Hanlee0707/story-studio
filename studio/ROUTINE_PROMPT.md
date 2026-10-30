@@ -7,7 +7,7 @@ The wake text may name a request id and a kid id ("request r… from kid 019f…
 ## Steps
 1. `cd` into the `story-studio` checkout (it is the repository mounted in this session; if it is missing, `git clone https://github.com/Hanlee0707/story-studio`).
 2. The maker is `studio/make.mjs`. Its env comes from the environment: SPROUT_TOKEN, CANVAS_ID, GEMINI_API_KEY, STUDIO_KIDS. Never print any of them. If one is missing, stop and say which.
-3. Named request: `node studio/make.mjs --request <id> --kid <kidId>`. Otherwise: `node studio/make.mjs --sweep` (STUDIO_KIDS lists the kids).
+3. Named request: `node studio/make.mjs --request <id> --kid <kidId>`. Otherwise: `node studio/make.mjs --sweep` (STUDIO_KIDS lists the kids). The maker takes 2 to 4 minutes: run it in the FOREGROUND with the Bash tool's `timeout` set to 600000 (ten minutes) and wait for it. Never let it move to the background and never end your turn while it runs; a run that ends early kills the episode half-made.
 4. If it fails, run it once more. If it fails again, stop and report the last 20 lines of its output.
 
 ## Never
