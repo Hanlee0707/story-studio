@@ -160,8 +160,21 @@ function renderStages(status){
 $('mkBack').onclick = () => { show('home'); };
 
 /* ---------- the shelf ---------- */
+// The shelf: the kid's own stories, newest first. Ordered query first; if the host refuses it, a plain
+// read of the collection, sorted here; any refusal is shown instead of a silent empty shelf.
+let shelfUnsub = null;
+function takeShelf(q){ episodes = q.docs.map(d => Object.assign({ id: d.id }, d.data())).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))); renderShelf(); }
+function watchShelf(){
+  if (shelfUnsub) { try { shelfUnsub(); } catch {} shelfUnsub = null; }
+  try {
+    shelfUnsub = db.collection('episodes').where('kid', '==', self).onSnapshot(takeShelf, e1 => {
+      try { shelfUnsub = db.collection('episodes').onSnapshot(takeShelf, e2 => { $('shelf').innerHTML = `<p class="empty">Could not load your stories (${esc((e2 && (e2.code || e2.message)) || 'unknown')})</p>`; }); }
+      catch (e3) { $('shelf').innerHTML = `<p class="empty">Could not load your stories (${esc(e3 && e3.message)})</p>`; }
+    });
+  } catch (e) { $('shelf').innerHTML = `<p class="empty">Could not load your stories (${esc(e && e.message)})</p>`; }
+}
 function renderShelf(){
-  const mine = episodes.filter(e => e.title && (e.status === 'playing' || e.status === 'ready' || e.status === 'voicing'));
+  const mine = episodes.filter(e => e.title && (!e.kid || e.kid === self) && (e.status === 'playing' || e.status === 'ready' || e.status === 'voicing'));
   $('count').textContent = mine.length ? mine.length + (mine.length === 1 ? ' story' : ' stories') : '';
   $('shelf').innerHTML = mine.length ? mine.map(e => `<button class="ep ${e.status === 'ready' ? '' : 'cooking'}" type="button" data-id="${esc(e.id)}"><img alt="" data-cover="${esc(e.id)}"><span class="t">${esc(e.title)}<span class="s">${(e.scenes || []).length} scenes</span></span></button>`).join('') : '<p class="empty">Nothing here yet. Ask for one!</p>';
   for (const img of $('shelf').querySelectorAll('img[data-cover]')) coverFor(img.dataset.cover).then(src => { if (src) img.src = src; }).catch(() => {});
@@ -253,7 +266,7 @@ $('done').onclick = () => {
   try { if (hasSprout && typeof sprout.use === 'function') db = await sprout.use('db'); } catch { db = null; }
   if (!db){ $('typed').hidden = false; $('hint').textContent = 'Preview: type a story idea'; return; }
   self = db.self || self;
-  db.collection('episodes').where('kid', '==', self).orderBy('createdAt', 'desc').limit(20).onSnapshot(q => { episodes = q.docs.map(d => Object.assign({ id: d.id }, d.data())); renderShelf(); }, () => {});
+  watchShelf();
   say('What story do you want tonight?');
 })();
 </script></body></html>
