@@ -261,6 +261,13 @@ $('done').onclick = () => {
   else toast('Done! (preview)');
 };
 
+/* ---------- the host's own Back: inside a story or the studio it returns to the shelf; on the shelf it leaves ---------- */
+if (hasSprout && typeof sprout.onBackPress === 'function') sprout.onBackPress(() => {
+  if (!$('home').hidden) return false;
+  au.pause(); wantPlay = false; show('home');
+  return true;
+});
+
 /* ---------- start ---------- */
 (async () => {
   try { if (hasSprout && typeof sprout.use === 'function') db = await sprout.use('db'); } catch { db = null; }
