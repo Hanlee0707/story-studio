@@ -6,8 +6,10 @@
 // Runs anywhere with node >= 20, curl and ffmpeg (Han's Mac, a Claude Code cloud routine).
 // All HTTP goes through curl so an outbound proxy in the cloud sandbox is honoured.
 //
-// Env: SPROUT_MCP_URL, SPROUT_TOKEN (connection token, canvas:read+write), CANVAS_ID,
-//      ANTHROPIC_API_KEY, GEMINI_API_KEY, FAL_KEY. Optional: STUDIO_MODEL (claude), STUDIO_DRY=1.
+// Everything is made with Gemini: the story (gemini-3.8-flash, schema-bound JSON), the voices
+// (gemini-2.5-flash-preview-tts, two speakers) and the pictures (gemini-2.5-flash-image).
+// Env: SPROUT_MCP_URL, SPROUT_TOKEN (connection token, canvas:read+write), CANVAS_ID, GEMINI_API_KEY.
+// Optional: STUDIO_DRY=1 (story only, nothing written past the meta).
 // Usage: node make.mjs --request <id> --kid <childId>   (one request)
 //        node make.mjs --sweep                          (every request still at status "asked")
 //        node make.mjs --prompt "..." --kid <childId>   (no request doc: just make an episode)
@@ -24,7 +26,11 @@ const args = Object.fromEntries(process.argv.slice(2).map((a, i, all) => a.start
 const MCP = env('SPROUT_MCP_URL', 'https://sprout-server-stage-606162082569.europe-west3.run.app/mcp');
 const TOKEN = env('SPROUT_TOKEN');
 const CANVAS = env('CANVAS_ID');
-const MODEL = env('STUDIO_MODEL', 'claude-sonnet-5-5');
+const GEMINI = 'https://generativelanguage.googleapis.com/v1beta/models';
+const STORY_MODEL = env('STUDIO_STORY_MODEL', 'gemini-3.8-flash');
+const TTS_MODEL = env('STUDIO_TTS_MODEL', 'gemini-2.5-flash-preview-tts');
+const IMAGE_MODEL = env('STUDIO_IMAGE_MODEL', 'gemini-2.5-flash-image');
+const gemini = (model, body, timeout = 120) => curl(`${GEMINI}/${model}:generateContent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': env('GEMINI_API_KEY') }, body, timeout });
 const CHUNK = 60000;            // base64 chars per db document (moderation takes 20 x 4000 per request; 60K leaves room)
 const SPEAKERS = { Sunny: 'Kore', Pip: 'Puck' };
 const work = mkdtempSync(join(tmpdir(), 'studio-'));
@@ -80,38 +86,43 @@ const list = async (path, where) => (await tool('canvas_list_documents', { canva
 /* ---------- the story ---------- */
 function storyPrompt(ask) {
   return `You write a tiny audio story for a four year old who asked, in her own words: "${ask}".
-Give the story through the story tool: a title (max 6 words) and 5 scenes, each with an art prompt and 2 to 4 lines.
+Give a title (max 6 words) and 5 scenes, each with an art prompt and 2 to 4 lines.
 A line is {"speaker": "Sunny" | "Pip", "text": string}. Sunny is the warm storyteller; Pip is a small excited sidekick who reacts, asks, and sometimes makes a sound effect. Mostly Sunny.
 Rules: gentle, funny, cozy, nothing scary, nothing sad at the end; short sentences a four year old follows by ear; if the ask names BTS or its members (Jin, Suga, J-Hope, RM, Jimin, V, Jungkook), they are kind, playful friends in the story; keep real people as characters only, invent nothing about their private lives. One sentence of plot per line. Total about 230 words of spoken text. End warmly in scene 5.
 "art" is a picture prompt for that scene: "children's picture book illustration, soft watercolor, ..." describing the place and action, no text in the image, no logos, friendly faces, at most 40 words.`;
 }
-const STORY_SCHEMA = { type: 'object', additionalProperties: false, required: ['title', 'scenes'], properties: {
-  title: { type: 'string' },
-  scenes: { type: 'array', minItems: 4, maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['art', 'lines'], properties: {
-    art: { type: 'string' },
-    lines: { type: 'array', minItems: 2, maxItems: 4, items: { type: 'object', additionalProperties: false, required: ['speaker', 'text'], properties: { speaker: { type: 'string', enum: ['Sunny', 'Pip'] }, text: { type: 'string' } } } } } } } } };
+const STORY_SCHEMA = {
+  type: 'OBJECT', required: ['title', 'scenes'],
+  properties: {
+    title: { type: 'STRING' },
+    scenes: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT', required: ['art', 'lines'],
+        properties: {
+          art: { type: 'STRING' },
+          lines: { type: 'ARRAY', items: { type: 'OBJECT', required: ['speaker', 'text'], properties: { speaker: { type: 'STRING', enum: ['Sunny', 'Pip'] }, text: { type: 'STRING' } } } },
+        },
+      },
+    },
+  },
+};
 async function makeStory(ask) {
-  // Claude hands the story back through a tool call, so the shape is guaranteed and no JSON is parsed out of prose.
-  const r = await curl('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01' }, body: { model: MODEL, max_tokens: 8000, tools: [{ name: 'story', description: 'The finished story.', input_schema: STORY_SCHEMA }], tool_choice: { type: 'auto' }, messages: [{ role: 'user', content: storyPrompt(ask) + '\nCall the story tool with the finished story; say nothing else.' }] } });
-  if (r.status >= 300) throw new Error(`claude http ${r.status}: ${r.text.slice(0, 300)}`);
-  const reply = JSON.parse(r.text);
-  if (reply.stop_reason === 'max_tokens') throw new Error('claude: ran out of tokens before the story was done');
-  const content = reply.content;
-  const use = content.find(b => b.type === 'tool_use');
-  let story;
-  if (use) story = use.input;
-  else {
-    // the model answered in prose: take the JSON object out of it
-    const text = content.filter(b => b.type === 'text').map(b => b.text).join('');
-    const a = text.indexOf('{'), z = text.lastIndexOf('}');
-    if (a < 0 || z < 0) throw new Error('claude: no story');
-    story = JSON.parse(text.slice(a, z + 1));
+  let last;
+  for (let i = 0; i < 2; i++) {
+    const r = await gemini(STORY_MODEL, { contents: [{ parts: [{ text: storyPrompt(ask) }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: STORY_SCHEMA, temperature: 0.9 } });
+    last = r;
+    if (r.status >= 300) continue;
+    try {
+      const text = JSON.parse(r.text).candidates?.[0]?.content?.parts?.map(p => p.text || '').join('');
+      const story = JSON.parse(text);
+      if (!Array.isArray(story.scenes) || story.scenes.length < 3) throw new Error('shape');
+      story.scenes = story.scenes.slice(0, 6).map(s => ({ art: String(s.art || '').slice(0, 400), lines: (s.lines || []).slice(0, 5).map(l => ({ speaker: SPEAKERS[l.speaker] ? l.speaker : 'Sunny', text: String(l.text || '').replace(/\s+/g, ' ').trim().slice(0, 300) })).filter(l => l.text) })).filter(s => s.lines.length);
+      story.title = String(story.title || 'Your story').slice(0, 60);
+      return story;
+    } catch (e) { last = { status: r.status, text: 'bad story json: ' + e.message }; }
   }
-  if (typeof story === 'string') { try { story = JSON.parse(story); } catch {} }
-  if (!story || !Array.isArray(story.scenes)) throw new Error('claude: story shape: ' + JSON.stringify(content.map(b => ({ type: b.type, input: typeof b.input, keys: b.input && typeof b.input === 'object' ? Object.keys(b.input) : undefined }))).slice(0, 300));
-  story.scenes = story.scenes.slice(0, 6).map(s => ({ art: String(s.art || '').slice(0, 400), lines: (s.lines || []).slice(0, 5).map(l => ({ speaker: SPEAKERS[l.speaker] ? l.speaker : 'Sunny', text: String(l.text || '').replace(/\s+/g, ' ').trim().slice(0, 300) })).filter(l => l.text) }));
-  story.title = String(story.title || 'Your story').slice(0, 60);
-  return story;
+  throw new Error(`story: http ${last.status} ${String(last.text).slice(0, 200)}`);
 }
 
 /* ---------- voices: gemini multi-speaker tts -> mp3 32k mono via ffmpeg ---------- */
@@ -124,7 +135,7 @@ async function voiceScene(scene, n) {
   const body = { contents: [{ parts: [{ text: (speakers.length > 1 ? `TTS the following conversation between ${speakers.join(' and ')}, as a warm bedtime story for a small child:\n` : 'Read this warmly, as a bedtime story for a small child:\n') + script }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: cfg } };
   let last;
   for (let i = 0; i < 3; i++) {
-    const r = await curl('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent', { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': env('GEMINI_API_KEY') }, body, timeout: 120 });
+    const r = await gemini(TTS_MODEL, body);
     last = r;
     if (r.status < 300) {
       const part = JSON.parse(r.text).candidates?.[0]?.content?.parts?.find(p => p.inlineData);
@@ -143,16 +154,22 @@ async function voiceScene(scene, n) {
   throw new Error(`tts scene ${n}: http ${last.status} ${last.text.slice(0, 200)}`);
 }
 
-/* ---------- pictures: fal flux schnell -> 512 jpeg ~40 KB ---------- */
+/* ---------- pictures: gemini image -> 512 jpeg ~35 KB via ffmpeg ---------- */
 async function drawScene(scene, n) {
-  const r = await curl('https://fal.run/fal-ai/flux/schnell', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Key ${env('FAL_KEY')}` }, body: { prompt: scene.art, image_size: 'square', num_inference_steps: 4, output_format: 'jpeg', num_images: 1, enable_safety_checker: true }, timeout: 90 });
-  if (r.status >= 300) throw new Error(`fal http ${r.status}: ${r.text.slice(0, 200)}`);
-  const url = JSON.parse(r.text).images?.[0]?.url; if (!url) throw new Error('fal: no image');
-  const raw = join(work, `a${n}.raw.jpg`), small = join(work, `a${n}.jpg`);
-  await curl(url, { out: raw, timeout: 60 });
-  const f = spawnSync('ffmpeg', ['-v', 'error', '-y', '-i', raw, '-vf', 'scale=512:512', '-q:v', '7', small]);
-  if (f.status !== 0) throw new Error('ffmpeg jpg: ' + f.stderr.toString().slice(0, 200));
-  return readFileSync(small).toString('base64');
+  let last;
+  for (let i = 0; i < 2; i++) {
+    const r = await gemini(IMAGE_MODEL, { contents: [{ parts: [{ text: scene.art }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '1:1' } } }, 120);
+    last = r;
+    if (r.status >= 300) continue;
+    const part = JSON.parse(r.text).candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+    if (!part) { last = { status: r.status, text: 'no image part' }; continue; }
+    const raw = join(work, `a${n}.raw`), small = join(work, `a${n}.jpg`);
+    writeFileSync(raw, Buffer.from(part.inlineData.data, 'base64'));
+    const f = spawnSync('ffmpeg', ['-v', 'error', '-y', '-i', raw, '-vf', 'scale=512:512', '-q:v', '7', small]);
+    if (f.status !== 0) throw new Error('ffmpeg jpg: ' + f.stderr.toString().slice(0, 200));
+    return readFileSync(small).toString('base64');
+  }
+  throw new Error(`image scene ${n}: http ${last.status} ${String(last.text).slice(0, 200)}`);
 }
 
 /* ---------- one episode ---------- */
