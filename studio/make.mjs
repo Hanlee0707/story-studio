@@ -92,9 +92,11 @@ const STORY_SCHEMA = { type: 'object', additionalProperties: false, required: ['
     lines: { type: 'array', minItems: 2, maxItems: 4, items: { type: 'object', additionalProperties: false, required: ['speaker', 'text'], properties: { speaker: { type: 'string', enum: ['Sunny', 'Pip'] }, text: { type: 'string' } } } } } } } } };
 async function makeStory(ask) {
   // Claude hands the story back through a tool call, so the shape is guaranteed and no JSON is parsed out of prose.
-  const r = await curl('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01' }, body: { model: MODEL, max_tokens: 2500, tools: [{ name: 'story', description: 'The finished story.', input_schema: STORY_SCHEMA }], tool_choice: { type: 'auto' }, messages: [{ role: 'user', content: storyPrompt(ask) + '\nCall the story tool with the finished story; say nothing else.' }] } });
+  const r = await curl('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01' }, body: { model: MODEL, max_tokens: 8000, tools: [{ name: 'story', description: 'The finished story.', input_schema: STORY_SCHEMA }], tool_choice: { type: 'auto' }, messages: [{ role: 'user', content: storyPrompt(ask) + '\nCall the story tool with the finished story; say nothing else.' }] } });
   if (r.status >= 300) throw new Error(`claude http ${r.status}: ${r.text.slice(0, 300)}`);
-  const content = JSON.parse(r.text).content;
+  const reply = JSON.parse(r.text);
+  if (reply.stop_reason === 'max_tokens') throw new Error('claude: ran out of tokens before the story was done');
+  const content = reply.content;
   const use = content.find(b => b.type === 'tool_use');
   let story;
   if (use) story = use.input;
